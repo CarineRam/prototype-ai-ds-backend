@@ -9,7 +9,7 @@ This repository contains backend API's for a data science prototype project. The
 1. Clone the repository:
 
     ```
-    git clone https://github.com/Momnadar1/refonte-ai-ds-backend
+    git clone https://github.com/Refonte-Infini/Backend-Data-Science-Prototype
     ```
 
 2. Navigate to the project directory:
