@@ -1,3 +1,4 @@
 #large file
 *.dll
 *.lib
+.venv/*
