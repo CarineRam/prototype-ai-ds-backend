@@ -7,6 +7,7 @@ from sklearn.datasets import fetch_20newsgroups
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import train_test_split
 import joblib
 from io import StringIO
 import matplotlib.pyplot as plt
@@ -22,6 +23,7 @@ CORS(app)
 DATASETS_DIR = 'datasets'
 FEATURE_COLUMNS_FILE = 'feature_columns.json'
 SELECTED_MODEL_FILE = 'selected_model.json'
+dataset_name = None
 
 models = {
         "LogisticRegression" : {
@@ -80,8 +82,6 @@ for file in (FEATURE_COLUMNS_FILE, SELECTED_MODEL_FILE):
         with open(file, 'w') as f:
             json.dump({}, f)
 
-
-
 def read_csv_file(file_path):
     return pd.read_csv(file_path)
 
@@ -92,6 +92,7 @@ def list_datasets():
 
 @app.route('/get_dataset', methods=['POST'])
 def get_dataset():
+    global dataset_name
     dataset_name = request.form['dataset_name']
     dataset_path = os.path.join(DATASETS_DIR, dataset_name)
     
@@ -177,6 +178,38 @@ def get_model_details():
             return jsonify({"error": "Model not found"}), 404
     else:
         return jsonify({"error": "Model name not provided"}), 400
+    
+#Post the percentage of split data
+@app.route('/split_data',methods=['POST'])
+def split_data():
+    global dataset_name
+
+    try:
+        if dataset_name is None:
+            return jsonify({'error': 'Dataset name not provided'}), 400
+
+        dataset_path = os.path.join(DATASETS_DIR, dataset_name)
+        if os.path.exists(dataset_path):
+            df = pd.read_csv(dataset_path)
+        else:
+            return jsonify({'error': 'Dataset not found'}), 400
+
+        data = request.json
+        train_percentage = data.get('trainPercentage', 0)
+        test_percentage = data.get('testPercentage', 0)
+
+        train, test = train_test_split(df, test_size=test_percentage, random_state=4)
+
+        response_data = {
+            'message': 'Data split successfully',
+            'trainPercentage': train_percentage,
+            'testPercentage': test_percentage
+        }
+
+        return jsonify({'train_size': len(train), 'test_size': len(test)}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run( debug=True)
