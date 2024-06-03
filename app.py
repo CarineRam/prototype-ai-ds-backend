@@ -6,16 +6,22 @@ from sklearn.svm import SVC
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import train_test_split
 import joblib
 from io import StringIO
 import matplotlib.pyplot as plt
 from model import load_model
-import io
+from io import BytesIO
 import os
 import uuid
 import json
+import matplotlib
+matplotlib.use('Agg')
+import io
 
 app = Flask(__name__)
 CORS(app)
@@ -23,7 +29,11 @@ CORS(app)
 DATASETS_DIR = 'datasets'
 FEATURE_COLUMNS_FILE = 'feature_columns.json'
 SELECTED_MODEL_FILE = 'selected_model.json'
+HISTOGRAMS_DIR = 'histograms'
 dataset_name = None
+train_percentage = None
+test_percentage = None
+selected_model = None
 
 models = {
         "LogisticRegression" : {
@@ -131,6 +141,7 @@ def get_features():
 
 @app.route('/get_unselected_columns', methods=['POST'])
 def get_unselected_columns():
+    global unselected_columns
     dataset_name = request.form['dataset_name']
     dataset_path = os.path.join(DATASETS_DIR, dataset_name)
     
@@ -163,7 +174,12 @@ def get_models():
 @app.route('/select_model', methods=['POST'])
 def select_model():
     data = request.json
+    print("Received data:", data)
     selected_model = data.get('model')
+
+    if not selected_model:
+        return jsonify({'error':'No model provided'}), 400
+    
     save_selected_model(selected_model)
     print("The selected model:", selected_model)
     return jsonify({'success': True, 'selected_model': selected_model})
@@ -210,6 +226,116 @@ def split_data():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+#train the model
+@app.route('/train_model', methods=['POST'])
+def train_model():
+    global dataset_name, unselected_columns, train_percentage, test_percentage, X_test, y_test, model
+
+    try:
+        if dataset_name is None:
+            return jsonify({'error':'Dataset name not provide'}), 400
+        
+        dataset_path = os.path.join(DATASETS_DIR, dataset_name)
+        if os.path.exists(dataset_path):
+            df = pd.read_csv(dataset_path)
+        else:
+            return jsonify({'error': 'Dataset not found'}), 400
+        
+        feature_columns = load_feature_columns()
+        if not feature_columns:
+            return jsonify({'error': 'No feature columns selected'}), 400
+        
+        if not unselected_columns:
+            return jsonify({'error': 'Unselected columns not found'}), 400
+        
+        target_column = unselected_columns[0]
+        if target_column not in df.columns:
+            return jsonify({'error': 'Target column not found in dataset'}), 400
+        
+        X = df[feature_columns]
+        y = df[target_column]
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_percentage, random_state=4)
+
+        model_name = load_selected_model()
+        if not model_name:
+            return jsonify({'error': 'No model selected'}), 400
+        
+        model = None
+        if model_name == 'LogisticRegression':
+            model = LogisticRegression(**models[model_name]['hyperparameters'])
+        elif model_name == 'SVC':
+            model = SVC(**models[model_name]['hyperparameters'])
+        elif model_name == 'MLPClassifier':
+            model = MLPClassifier(**models[model_name]['hyperparameters'])
+        elif model_name == 'GaussianNB':
+            model = GaussianNB()
+        elif model_name == 'MultinomialNB':
+            model = MultinomialNB(**models[model_name]['hyperparameters'])
+        else:
+            return jsonify({'error': 'Selected model is not supported'}), 400
+
+        model.fit(X_train, y_train)
+
+        score = model.score(X_test, y_test)
+
+        model_filename = f"trained_model_{uuid.uuid4().hex}.pkl"
+        joblib.dump(model, os.path.join(DATASETS_DIR, model_filename))
+
+        # train_data_path = os.path.join(DATASETS_DIR, f"train_data_{uuid.uuid4().hex}.csv")
+        # test_data_path = os.path.join(DATASETS_DIR, f"test_data_{uuid.uuid4().hex}.csv")
+        # pd.DataFrame(X_train).assign(target=y_train).to_csv(train_data_path, index=False)
+        # pd.DataFrame(X_test).assign(target=y_test).to_csv(test_data_path, index=False)
+
+        response_data = {
+            'message': 'Model trained successfully',
+            'model': model_name,
+            'accuracy': score,
+            'model_filename': model_filename,
+            # 'train_path_data': train_data_path,
+            # 'test_path_data': test_data_path
+        }
+
+        return jsonify(response_data), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+#generate an histogram
+@app.route('/generate_histogram', methods=['GET'])
+def generate_histogram():
+    global model, X_test, y_test
+
+    print(X_test)
+    print(y_test)
+
+    try:
+        if model is None or X_test is None or y_test is None:
+            return jsonify({'error': 'Model or test data not found'}), 400
+
+        plt.hist(y_test)
+        # plt.hist(y_test, bins=10, alpha=0.5, label='Test')
+        plt.hist(model.predict(X_test), bins = 10, alpha = 0.5, label = 'Predicted')
+        plt.legend(loc='upper right')
+        plt.xlabel('Classes')
+        plt.ylabel('Frequency')
+        plt.title('Histogram of actual vs Predicted Classes')
+        # histogram_path = os.path.join(HISTOGRAMS_DIR, f"histogram_{uuid.uuid4().hex}.png")
+        # plt.savefig(histogram_path)
+
+        img = BytesIO()
+        plt.savefig(img, format='png')
+        img.seek(0)
+        plt.close()
+
+        return jsonify(img, mimetype='image/png')
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    # plt.hist([1, 4, 3, 4, 5], bins=5)
+    # buffer = io.BytesIO()
+    # plt.savefig(buffer, format='png')
+    # buffer.seek(0)
+    # return send_file(buffer, mimetype='image/png')
 
 if __name__ == '__main__':
     app.run( debug=True)
