@@ -22,6 +22,9 @@ import json
 import matplotlib
 matplotlib.use('Agg')
 import io
+from sklearn.metrics import confusion_matrix 
+from sklearn.metrics import accuracy_score 
+from sklearn.metrics import classification_report 
 
 app = Flask(__name__)
 CORS(app)
@@ -79,6 +82,9 @@ models = {
 
 if not os.path.exists(DATASETS_DIR):
     os.makedirs(DATASETS_DIR)
+
+if not os.path.exists(HISTOGRAMS_DIR):
+    os.makedirs(HISTOGRAMS_DIR)
 
 # if not os.path.exists(FEATURE_COLUMNS_FILE):
 #     os.makedirs(FEATURE_COLUMNS_FILE)
@@ -229,9 +235,9 @@ def split_data():
 #train the model
 @app.route('/train_model', methods=['POST'])
 def train_model():
-    global dataset_name, unselected_columns, train_percentage, test_percentage, X_test, y_test, model
+        global dataset_name, unselected_columns, train_percentage, test_percentage, X_test, y_test, model
 
-    try:
+    # try:
         if dataset_name is None:
             return jsonify({'error':'Dataset name not provide'}), 400
         
@@ -275,61 +281,65 @@ def train_model():
         else:
             return jsonify({'error': 'Selected model is not supported'}), 400
 
+        X_train = pd.get_dummies(X_train)
+        X_test = pd.get_dummies(X_test)
+        # y_train = pd.get_dummies(y_train)
+        print(X_train, X_test)
         model.fit(X_train, y_train)
 
-        score = model.score(X_test, y_test)
+        predicted = model.predict(X_test)
+        results = confusion_matrix(y_test, predicted) 
+
+        print ('Confusion Matrix :')
+        print(results) 
+        score = accuracy_score(y_test, predicted)
+        print ('Accuracy Score :', score)
+        print ('Report : ')
+        print( classification_report(y_test, predicted) )
 
         model_filename = f"trained_model_{uuid.uuid4().hex}.pkl"
         joblib.dump(model, os.path.join(DATASETS_DIR, model_filename))
-
-        # train_data_path = os.path.join(DATASETS_DIR, f"train_data_{uuid.uuid4().hex}.csv")
-        # test_data_path = os.path.join(DATASETS_DIR, f"test_data_{uuid.uuid4().hex}.csv")
-        # pd.DataFrame(X_train).assign(target=y_train).to_csv(train_data_path, index=False)
-        # pd.DataFrame(X_test).assign(target=y_test).to_csv(test_data_path, index=False)
 
         response_data = {
             'message': 'Model trained successfully',
             'model': model_name,
             'accuracy': score,
             'model_filename': model_filename,
-            # 'train_path_data': train_data_path,
-            # 'test_path_data': test_data_path
         }
 
         return jsonify(response_data), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 #generate an histogram
-@app.route('/generate_histogram', methods=['GET'])
+@app.route('/generate_histogram', methods=['POST'])
 def generate_histogram():
-    global model, X_test, y_test
+        global model, X_test, y_test
 
-    print(X_test)
-    print(y_test)
+        print(X_test)
+        print(y_test)
 
-    try:
+    # try:
         if model is None or X_test is None or y_test is None:
             return jsonify({'error': 'Model or test data not found'}), 400
 
-        plt.hist(y_test)
+        plt.hist(y_test, label = 'Actual')
         # plt.hist(y_test, bins=10, alpha=0.5, label='Test')
         plt.hist(model.predict(X_test), bins = 10, alpha = 0.5, label = 'Predicted')
+        # plt.scatter(model.predict(X_test))
         plt.legend(loc='upper right')
         plt.xlabel('Classes')
         plt.ylabel('Frequency')
         plt.title('Histogram of actual vs Predicted Classes')
-        # histogram_path = os.path.join(HISTOGRAMS_DIR, f"histogram_{uuid.uuid4().hex}.png")
-        # plt.savefig(histogram_path)
+        histogram_path = os.path.join(HISTOGRAMS_DIR, f"histogram_{uuid.uuid4().hex}.png")
+        plt.savefig(histogram_path)
 
         img = BytesIO()
         plt.savefig(img, format='png')
         img.seek(0)
         plt.close()
 
-        return jsonify(img, mimetype='image/png')
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return send_file(img, mimetype='image/png')
+    # except Exception as e:
+    #     return jsonify({'error': str(e)}), 500
 
     # plt.hist([1, 4, 3, 4, 5], bins=5)
     # buffer = io.BytesIO()
