@@ -235,7 +235,7 @@ def split_data():
 #train the model
 @app.route('/train_model', methods=['POST'])
 def train_model():
-        global dataset_name, unselected_columns, train_percentage, test_percentage, X_test, y_test, model
+        global dataset_name, unselected_columns, train_percentage, test_percentage, X_test, y_test, model, results
 
     # try:
         if dataset_name is None:
@@ -284,7 +284,7 @@ def train_model():
         X_train = pd.get_dummies(X_train)
         X_test = pd.get_dummies(X_test)
         # y_train = pd.get_dummies(y_train)
-        print(X_train, X_test)
+        print("after get dummies", X_train, X_test)
         model.fit(X_train, y_train)
 
         predicted = model.predict(X_test)
@@ -312,7 +312,7 @@ def train_model():
 #generate an histogram
 @app.route('/generate_histogram', methods=['POST'])
 def generate_histogram():
-        global model, X_test, y_test
+        global model, X_test, y_test, results
 
         print(X_test)
         print(y_test)
@@ -338,14 +338,32 @@ def generate_histogram():
         plt.close()
 
         return send_file(img, mimetype='image/png')
-    # except Exception as e:
-    #     return jsonify({'error': str(e)}), 500
 
-    # plt.hist([1, 4, 3, 4, 5], bins=5)
-    # buffer = io.BytesIO()
-    # plt.savefig(buffer, format='png')
-    # buffer.seek(0)
-    # return send_file(buffer, mimetype='image/png')
+#generate a heatmap
+# @app.route('/generate_heatmap', methods=['POST'])
+# def generate_heatmap():
+#         global model, X_test, y_test, results
+
+#         if model is None or X_test is None or y_test is None:
+#             return jsonify({'error': 'Model or test data not found'}), 400
+
+#         plt.hist(y_test, label = 'Actual')
+#         # plt.hist(y_test, bins=10, alpha=0.5, label='Test')
+#         plt.hist(model.predict(X_test), bins = 10, alpha = 0.5, label = 'Predicted')
+#         # plt.scatter(model.predict(X_test))
+#         plt.legend(loc='upper right')
+#         plt.xlabel('Classes')
+#         plt.ylabel('Frequency')
+#         plt.title('Histogram of actual vs Predicted Classes')
+#         histogram_path = os.path.join(HISTOGRAMS_DIR, f"histogram_{uuid.uuid4().hex}.png")
+#         plt.savefig(histogram_path)
+
+#         img = BytesIO()
+#         plt.savefig(img, format='png')
+#         img.seek(0)
+#         plt.close()
+
+#         return send_file(img, mimetype='image/png')
 
 if __name__ == '__main__':
     app.run( debug=True)
