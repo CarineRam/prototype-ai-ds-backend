@@ -1,1 +1,1 @@
-["mean_radius", "mean_texture", "mean_perimeter", "mean_area", "mean_smoothness"]
+["Glucose", "Pregnancies", "BloodPressure", "SkinThickness", "Insulin", "BMI", "Age", "DiabetesPedigreeFunction"]

@@ -22,9 +22,11 @@ import json
 import matplotlib
 matplotlib.use('Agg')
 import io
+import seaborn as sns
 from sklearn.metrics import confusion_matrix 
 from sklearn.metrics import accuracy_score 
-from sklearn.metrics import classification_report 
+from sklearn.metrics import classification_report
+import numpy as np
 
 app = Flask(__name__)
 CORS(app)
@@ -33,6 +35,8 @@ DATASETS_DIR = 'datasets'
 FEATURE_COLUMNS_FILE = 'feature_columns.json'
 SELECTED_MODEL_FILE = 'selected_model.json'
 HISTOGRAMS_DIR = 'histograms'
+HEATMAP_DIR ='heatmap'
+RESIDUAL_PLOT_DIR = 'residual_plot'
 dataset_name = None
 train_percentage = None
 test_percentage = None
@@ -85,6 +89,12 @@ if not os.path.exists(DATASETS_DIR):
 
 if not os.path.exists(HISTOGRAMS_DIR):
     os.makedirs(HISTOGRAMS_DIR)
+
+if not os.path.exists(HEATMAP_DIR):
+    os.makedirs(HEATMAP_DIR)
+
+if not os.path.exists(RESIDUAL_PLOT_DIR):
+    os.makedirs(RESIDUAL_PLOT_DIR)
 
 # if not os.path.exists(FEATURE_COLUMNS_FILE):
 #     os.makedirs(FEATURE_COLUMNS_FILE)
@@ -235,7 +245,7 @@ def split_data():
 #train the model
 @app.route('/train_model', methods=['POST'])
 def train_model():
-        global dataset_name, unselected_columns, train_percentage, test_percentage, X_test, y_test, model, results
+        global dataset_name, unselected_columns, train_percentage, test_percentage, X_test, y_test, model, results, predicted
 
     # try:
         if dataset_name is None:
@@ -321,10 +331,9 @@ def generate_histogram():
         if model is None or X_test is None or y_test is None:
             return jsonify({'error': 'Model or test data not found'}), 400
 
+        plt.figure()
         plt.hist(y_test, label = 'Actual')
-        # plt.hist(y_test, bins=10, alpha=0.5, label='Test')
         plt.hist(model.predict(X_test), bins = 10, alpha = 0.5, label = 'Predicted')
-        # plt.scatter(model.predict(X_test))
         plt.legend(loc='upper right')
         plt.xlabel('Classes')
         plt.ylabel('Frequency')
@@ -340,30 +349,53 @@ def generate_histogram():
         return send_file(img, mimetype='image/png')
 
 #generate a heatmap
-# @app.route('/generate_heatmap', methods=['POST'])
-# def generate_heatmap():
-#         global model, X_test, y_test, results
+@app.route('/generate_heatmap', methods=['POST'])
+def generate_heatmap():
+        global model, X_test, y_test, results
 
-#         if model is None or X_test is None or y_test is None:
-#             return jsonify({'error': 'Model or test data not found'}), 400
+        if model is None or X_test is None or y_test is None:
+            return jsonify({'error': 'Model or test data not found'}), 400
 
-#         plt.hist(y_test, label = 'Actual')
-#         # plt.hist(y_test, bins=10, alpha=0.5, label='Test')
-#         plt.hist(model.predict(X_test), bins = 10, alpha = 0.5, label = 'Predicted')
-#         # plt.scatter(model.predict(X_test))
-#         plt.legend(loc='upper right')
-#         plt.xlabel('Classes')
-#         plt.ylabel('Frequency')
-#         plt.title('Histogram of actual vs Predicted Classes')
-#         histogram_path = os.path.join(HISTOGRAMS_DIR, f"histogram_{uuid.uuid4().hex}.png")
-#         plt.savefig(histogram_path)
+        plt.figure()
+        sns.heatmap(results)
+        plt.title('Heatmap')
+        heatmap_path = os.path.join(HEATMAP_DIR, f"heatmap_{uuid.uuid4().hex}.png")
+        plt.savefig(heatmap_path)
 
-#         img = BytesIO()
-#         plt.savefig(img, format='png')
-#         img.seek(0)
-#         plt.close()
+        img_hm = BytesIO()
+        plt.savefig(img_hm, format='png')
+        img_hm.seek(0)
+        plt.close()
 
-#         return send_file(img, mimetype='image/png')
+        return send_file(img_hm, mimetype='image/png')
+
+#generate a residual plot
+@app.route('/generate_residual_plot', methods=['POST'])
+def generate_residual_plot():
+        global model, X_test, y_test, results, predicted
+
+        if model is None or X_test is None or y_test is None:
+            return jsonify({'error': 'Model or test data not found'}), 400
+        
+        y_test = np.array(y_test, dtype=np.float64)
+        predicted = np.array(predicted, dtype=np.float64)
+
+        residuals = y_test - predicted
+        
+        plt.figure()
+        plt.scatter(y_test, residuals)
+        plt.title('Residual Plot')
+        plt.xlabel('Actual values')
+        plt.ylabel('Residuals')
+        residual_plot_path = os.path.join(RESIDUAL_PLOT_DIR, f"residual_plot_{uuid.uuid4().hex}.png")
+        plt.savefig(residual_plot_path)
+
+        img_rp = BytesIO()
+        plt.savefig(img_rp, format='png')
+        img_rp.seek(0)
+        plt.close()
+
+        return send_file(img_rp, mimetype='image/png')
 
 if __name__ == '__main__':
     app.run( debug=True)
