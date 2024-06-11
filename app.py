@@ -26,7 +26,9 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix 
 from sklearn.metrics import accuracy_score 
 from sklearn.metrics import classification_report
+from sklearn.metrics import precision_recall_curve, average_precision_score
 import numpy as np
+import base64
 
 app = Flask(__name__)
 CORS(app)
@@ -36,11 +38,17 @@ FEATURE_COLUMNS_FILE = 'feature_columns.json'
 SELECTED_MODEL_FILE = 'selected_model.json'
 HISTOGRAMS_DIR = 'histograms'
 HEATMAP_DIR ='heatmap'
-RESIDUAL_PLOT_DIR = 'residual_plot'
+PRECISION_RECALL_DIR = 'precision_recall'
+
 dataset_name = None
 train_percentage = None
 test_percentage = None
 selected_model = None
+model = None
+X_test = None
+y_test = None
+results = None
+predicted = None
 
 models = {
         "LogisticRegression" : {
@@ -93,15 +101,8 @@ if not os.path.exists(HISTOGRAMS_DIR):
 if not os.path.exists(HEATMAP_DIR):
     os.makedirs(HEATMAP_DIR)
 
-if not os.path.exists(RESIDUAL_PLOT_DIR):
-    os.makedirs(RESIDUAL_PLOT_DIR)
-
-# if not os.path.exists(FEATURE_COLUMNS_FILE):
-#     os.makedirs(FEATURE_COLUMNS_FILE)
-
-# if not os.path.exists(FEATURE_COLUMNS_FILE):
-#     with open(FEATURE_COLUMNS_FILE, 'w') as f:
-#         json.dump([], f)
+if not os.path.exists(PRECISION_RECALL_DIR):
+    os.makedirs(PRECISION_RECALL_DIR)
 
 for file in (FEATURE_COLUMNS_FILE, SELECTED_MODEL_FILE):
     if not os.path.exists(file):
@@ -293,7 +294,6 @@ def train_model():
 
         X_train = pd.get_dummies(X_train)
         X_test = pd.get_dummies(X_test)
-        # y_train = pd.get_dummies(y_train)
         print("after get dummies", X_train, X_test)
         model.fit(X_train, y_train)
 
@@ -369,33 +369,47 @@ def generate_heatmap():
 
         return send_file(img_hm, mimetype='image/png')
 
-#generate a residual plot
-@app.route('/generate_residual_plot', methods=['POST'])
-def generate_residual_plot():
+#generate a precision recall curve
+@app.route('/generate_precision_recall', methods=['GET'])
+def generate_precision_recall():
+    if request.method == 'GET':
         global model, X_test, y_test, results, predicted
 
-        if model is None or X_test is None or y_test is None:
-            return jsonify({'error': 'Model or test data not found'}), 400
+        if hasattr(model, "predict_proba"):
+            y_scores = model.predict_proba(X_test)[:, 1]
+        elif hasattr(model, "decision_function"):
+            y_scores = model.decision_function(X_test)
+        else:
+            return jsonify({'error': 'Model does not support predict_proba or decision_function'}), 400
         
-        y_test = np.array(y_test, dtype=np.float64)
-        predicted = np.array(predicted, dtype=np.float64)
+        precision, recall, _ = precision_recall_curve(y_test, y_scores)
+        average_precision = average_precision_score(y_test, y_scores)
 
-        residuals = y_test - predicted
-        
         plt.figure()
-        plt.scatter(y_test, residuals)
-        plt.title('Residual Plot')
-        plt.xlabel('Actual values')
-        plt.ylabel('Residuals')
-        residual_plot_path = os.path.join(RESIDUAL_PLOT_DIR, f"residual_plot_{uuid.uuid4().hex}.png")
-        plt.savefig(residual_plot_path)
+        plt.plot(recall, precision, marker='.', label=f'{model.__class__.__name__} (AP = {average_precision:.2f})')
+        plt.xlabel('Recall')
+        plt.ylabel('Precision')
+        plt.title('Precision-Recall Curve')
+        plt.legend()
+        plt.grid(True)
 
-        img_rp = BytesIO()
-        plt.savefig(img_rp, format='png')
-        img_rp.seek(0)
+        # Save the plot to a BytesIO object
+        buf = io.BytesIO()
+        precision_recall_path = os.path.join(PRECISION_RECALL_DIR, f"precision_recall_{uuid.uuid4().hex}.png")
+        plt.savefig(precision_recall_path, format='png')
+        buf.seek(0)
+        # image_base64 = base64.b64encode(buf.read()).decode('utf-8')
         plt.close()
 
-        return send_file(img_rp, mimetype='image/png')
+        # model_filename = f"trained_model_{uuid.uuid4().hex}.pkl"
+        # joblib.dump(model, os.path.join(DATASETS_DIR, model_filename))
+
+        return send_file(buf, mimetype='image/png')
+    
+    else:
+        return jsonify({'error': 'Method Not Allowed'}), 405
+    
+
 
 if __name__ == '__main__':
     app.run( debug=True)
