@@ -62,19 +62,19 @@ models = {
             "type": "Classification",
             "description": "SVC is a supervised learning algorithm used for classification. It finds an optimal hyperplane in an N-dimensional space (where N is the number of features) that separates the classes.",
             "hyperparameters": {
-                "C": "float (default=1.0)",
-                "kernel": "str (default='rbf')",
-                "gamma": "float (default='scale')",
+                "C": 1.0   ,           #"float (default=1.0)",
+                "kernel": "rbf",
+                "gamma": "scale",
             }
         },
         "MLPClassifier": {
             "type": "Classification",
             "description": "MLPClassifier is a type of artificial neural network known as a multi-layer perceptron. It can be used for classification and regression tasks.",
             "hyperparameters": {
-                "hidden_layer_sizes": "tuple (default=(100,))",
-                "activation": "str (default='relu')",
-                "solver": "str (default='adam')",
-                "alpha": "float (default=0.0001)",
+                "hidden_layer_sizes": 100,
+                "activation": 'relu',
+                "solver": 'adam',
+                "alpha": 0.0001,
             }
         },
         "GaussianNB": {
@@ -86,8 +86,8 @@ models = {
             "type": "Classification",
             "description": "MultinomialNB is a variant of the Naive Bayes algorithm suitable for data with multinomial distributions, such as word counts in text data.",
             "hyperparameters": {
-                "alpha": "float (default=1.0)",
-                "fit_prior": "bool (default=True)",
+                "alpha": 1.0,
+                "fit_prior": True,
             }
         }
     }
