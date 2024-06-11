@@ -370,10 +370,13 @@ def generate_heatmap():
         return send_file(img_hm, mimetype='image/png')
 
 #generate a precision recall curve
-@app.route('/generate_precision_recall', methods=['GET'])
+@app.route('/generate_precision_recall', methods=['POST'])
 def generate_precision_recall():
-    if request.method == 'GET':
+    # if request.method == 'POST':
         global model, X_test, y_test, results, predicted
+
+        # if model is None or model not in models:
+        #     return jsonify({'error': 'Invalid or no model selected'}), 400
 
         if hasattr(model, "predict_proba"):
             y_scores = model.predict_proba(X_test)[:, 1]
@@ -392,22 +395,19 @@ def generate_precision_recall():
         plt.title('Precision-Recall Curve')
         plt.legend()
         plt.grid(True)
+        precision_recall_path = os.path.join(PRECISION_RECALL_DIR, f"precision_recall_{uuid.uuid4().hex}.png")
+        plt.savefig(precision_recall_path, format='png')
 
         # Save the plot to a BytesIO object
         buf = io.BytesIO()
-        precision_recall_path = os.path.join(PRECISION_RECALL_DIR, f"precision_recall_{uuid.uuid4().hex}.png")
-        plt.savefig(precision_recall_path, format='png')
+        plt.savefig(buf, format='png')
         buf.seek(0)
-        # image_base64 = base64.b64encode(buf.read()).decode('utf-8')
         plt.close()
-
-        # model_filename = f"trained_model_{uuid.uuid4().hex}.pkl"
-        # joblib.dump(model, os.path.join(DATASETS_DIR, model_filename))
 
         return send_file(buf, mimetype='image/png')
     
-    else:
-        return jsonify({'error': 'Method Not Allowed'}), 405
+    # else:
+    #     return jsonify({'error': 'Method Not Allowed'}), 405
     
 
 
