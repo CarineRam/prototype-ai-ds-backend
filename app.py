@@ -145,7 +145,7 @@ def save_columns():
     data = request.json
     selected_columns = data.get('selected', [])
     
-    print("Selected columns:", selected_columns)
+    # print("Selected columns:", selected_columns)
 
     save_feature_columns(selected_columns)
     
@@ -167,7 +167,7 @@ def get_unselected_columns():
         all_columns = set(df.columns)
         selected_columns = set(load_feature_columns())
         unselected_columns = list(all_columns - selected_columns)
-        print("Unselected columns:", unselected_columns)
+        # print("Unselected columns:", unselected_columns)
         return jsonify({'unselected_columns': unselected_columns})
     else:
         return jsonify({'error': 'Dataset not found'}), 404
@@ -191,14 +191,14 @@ def get_models():
 @app.route('/select_model', methods=['POST'])
 def select_model():
     data = request.json
-    print("Received data:", data)
+    # print("Received data:", data)
     selected_model = data.get('model')
 
     if not selected_model:
         return jsonify({'error':'No model provided'}), 400
     
     save_selected_model(selected_model)
-    print("The selected model:", selected_model)
+    # print("The selected model:", selected_model)
     return jsonify({'success': True, 'selected_model': selected_model})
 
 @app.route('/model_details', methods=['POST'])
@@ -324,8 +324,8 @@ def train_model():
 def generate_histogram():
         global model, X_test, y_test, results
 
-        print(X_test)
-        print(y_test)
+        # print(X_test)
+        # print(y_test)
 
     # try:
         if model is None or X_test is None or y_test is None:
