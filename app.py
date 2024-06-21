@@ -29,9 +29,13 @@ from sklearn.metrics import classification_report
 from sklearn.metrics import precision_recall_curve, average_precision_score
 import numpy as np
 import base64
+import sys
+import magicalCodex
 
 app = Flask(__name__)
 CORS(app)
+
+app.register_blueprint(magicalCodex.magicalCodex_blueprint, url_prefix='/magicalCodex')
 
 DATASETS_DIR = 'datasets'
 FEATURE_COLUMNS_FILE = 'feature_columns.json'
@@ -62,7 +66,7 @@ models = {
             "type": "Classification",
             "description": "SVC is a supervised learning algorithm used for classification. It finds an optimal hyperplane in an N-dimensional space (where N is the number of features) that separates the classes.",
             "hyperparameters": {
-                "C": 1.0   ,           #"float (default=1.0)",
+                "C": 1.0,           #"float (default=1.0)",
                 "kernel": "rbf",
                 "gamma": "scale",
             }
