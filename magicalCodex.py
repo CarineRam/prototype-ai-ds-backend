@@ -110,7 +110,7 @@ def gpt2_generate_response(input_text):
 
     input_ids = tokenizer.encode(input_text, return_tensors="pt")
 
-    output = gpt2model.generate(input_ids, max_length=65, num_return_sequences=1)
+    output = gpt2model.generate(input_ids, max_length=100, num_return_sequences=1)
 
     generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
 
