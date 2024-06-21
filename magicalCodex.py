@@ -95,6 +95,7 @@ def bert_predict_mask(input_text):
 def predict_mask():
     data = request.json
     input_text = data.get('input_text')
+    max_length = data.get('max_length')
 
     print(f"Input Text for Bert : {input_text}")
 
@@ -102,30 +103,33 @@ def predict_mask():
     print("Prediction :", prediction)
     return jsonify({'predicted_text': prediction})
 
+@magicalCodex_blueprint.route('/generate_text', methods=['POST'])
+def generate_text():
+    data = request.json
+    input_text = data.get('input_text')
+    max_length = data.get('max_length', 65)
+
+    print(f"Received input for GPT-2 generation: {input_text}")
+
+    generated_text = gpt2_generate_response(input_text, max_length)
+    return jsonify({'generated_text': generated_text})
+
 #prediction of gpt2
-def gpt2_generate_response(input_text):
+def gpt2_generate_response(input_text, max_length):
 
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     gpt2model = GPT2LMHeadModel.from_pretrained('gpt2')
 
     input_ids = tokenizer.encode(input_text, return_tensors="pt")
 
-    output = gpt2model.generate(input_ids, max_length=100, num_return_sequences=1)
+    output = gpt2model.generate(input_ids, max_length=max_length, num_return_sequences=1)
 
     generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
 
     return generated_text[len(input_text):].strip()
 
 
-@magicalCodex_blueprint.route('/generate_text', methods=['POST'])
-def generate_text():
-    data = request.json
-    input_text = data.get('input_text')
 
-    print(f"Received input for GPT-2 generation: {input_text}")
-
-    generated_text = gpt2_generate_response(input_text)
-    return jsonify({'generated_text': generated_text})
 
 #dataset choice
 @magicalCodex_blueprint.route('/datasets_MC', methods=['GET'])
