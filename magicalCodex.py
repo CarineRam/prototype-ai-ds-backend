@@ -176,8 +176,3 @@ def process_selected_dataset():
         return jsonify({"status": "success", "message": f"Dataset {selected_dataset_mc} processed with GPT-2", "responses": responses})
     else:
         return jsonify({"status": "error", "message": "No dataset selected"}), 400
-
-
-
-
-    
