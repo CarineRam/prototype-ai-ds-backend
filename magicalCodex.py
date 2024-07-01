@@ -1,8 +1,11 @@
 from flask import Blueprint, request, jsonify
-from transformers import GPT2LMHeadModel, GPT2Tokenizer, BertModel, BertTokenizer, BertForMaskedLM, pipeline, BertForSequenceClassification
+from transformers import GPT2LMHeadModel, GPT2Tokenizer, BertModel, BertTokenizer, BertForMaskedLM, pipeline, BertForSequenceClassification, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 import os
 import json
 import torch
+import re
+from torch.utils.data import DataLoader, Dataset, random_split
+from typing import List, Dict
 
 magicalCodex_blueprint = Blueprint('magicalCodex', __name__)
 
@@ -10,6 +13,7 @@ SELECTED_MODEL_MC = 'selected_model_MC.json'
 DATASETS_MC_DIR = 'datasets_MC'
 
 selected_dataset_mc = None
+dataset_text = None
 
 gpt2tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 gpt2model = GPT2LMHeadModel.from_pretrained('gpt2')
@@ -35,7 +39,6 @@ models_MC = {
 #     output = gpt2model.generate(input_ids, max_length=100, num_return_sequences=1)
 #     generated_text = gpt2tokenizer.decode(output[0], skip_special_tokens=True)
 #     return generated_text
-
 
 if not os.path.exists(SELECTED_MODEL_MC):
     with open(SELECTED_MODEL_MC, 'w') as f:
@@ -128,9 +131,6 @@ def gpt2_generate_response(input_text, max_length):
 
     return generated_text[len(input_text):].strip()
 
-
-
-
 #dataset choice
 @magicalCodex_blueprint.route('/datasets_MC', methods=['GET'])
 def list_datasets_MC():
@@ -176,3 +176,145 @@ def process_selected_dataset():
         return jsonify({"status": "success", "message": f"Dataset {selected_dataset_mc} processed with GPT-2", "responses": responses})
     else:
         return jsonify({"status": "error", "message": "No dataset selected"}), 400
+
+#DISPLAY VARIABLES FROM THE DATASET
+
+
+
+#COMMENT JE VAIS FAIRE POUR ENREGISTRER LE DATASET ET L'UTILISER AVEC LE MODEL
+
+#Retrieve dataset data
+def get_dataset():
+    global dataset_name, dataset_text
+    dataset_name = request.form['dataset_name']
+    dataset_path = os.path.join(DATASETS_MC_DIR, dataset_name)
+
+    with open(dataset_path, 'r', encoding='utf-8') as file:
+        dataset_text = file.read()
+        print(dataset_text[:100])
+
+#Personnalized dataset
+class TextDataset(Dataset):
+    def __init__(self, text, tokenizer, block_size):
+        self.textDataset = []
+        for i in range(0, len(text), block_size):
+            tokens = tokenizer.encode(text[i:i + block_size])
+            tokens_with_special_tokens = tokenizer.build_inputs_with_special_tokens(tokens)
+            self.textDataset.append(tokens_with_special_tokens)
+
+    def __len__(self):
+        return len(self.textDataset)
+    
+    def __getitem__(self, item):
+        # return torch.tensor(self.textDataset[item])
+        return self.textDataset[item]
+
+class CustomDataCollator(DataCollatorForLanguageModeling):
+    def __call__(self, features: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+        batch = {}
+        # Assume 'input_ids', 'attention_mask', etc., are in each feature
+        batch['input_ids'] = torch.stack([f['input_ids'] for f in features])
+        batch['attention_mask'] = torch.stack([f['attention_mask'] for f in features])
+        # Add other necessary fields as required by your model
+        return batch
+
+#Code pour gpt2 avec utilisation de dataset (sans que le dataset soit encore à l'intérieur)
+@magicalCodex_blueprint.route('/dgenerate_text', methods=['POST']) #ERROR 400 A VOIR####
+def gpt2_generate_wdataset():
+    data = request.get_json()
+    dataset_name = data.get('dataset_name')
+    model_name = data.get('model_name')
+    prompt_text = data.get('prompt_text')
+
+    if not dataset_name or not model_name or not prompt_text:
+        return jsonify({'error':'Missing dataset_name, model_name or prompt_name'}), 400
+
+    print("prompt_text is:",prompt_text)
+
+    dataset_path = os.path.join(DATASETS_MC_DIR, dataset_name)
+
+    try:
+        with open(dataset_path, 'r', encoding='utf-8') as file:
+            dataset_text = file.read()
+            print(dataset_text[:100])
+    except FileNotFoundError:
+        return jsonify({'error': f"Dataset {dataset_name} not found"}), 404
+
+    cleaned_text = re.sub(r'[^\w\s]', '', dataset_text)
+    cleaned_text = cleaned_text.lower()
+    print(cleaned_text)
+    
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+    tokenizer.add_special_tokens({'pad_token':'[PAD]'})
+
+    model = GPT2LMHeadModel.from_pretrained('gpt2')
+    model.resize_token_embeddings(len(tokenizer))
+
+    block_size = 128
+    dataset = TextDataset(cleaned_text, tokenizer, block_size)
+
+    print("dataset = TextDataset(cleaned_text ... )")
+
+    train_size = int(0.9 * len(dataset))
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=4)
+
+    training_args = TrainingArguments(
+       output_dir='./results',
+        overwrite_output_dir=True,
+        num_train_epochs=3,
+        per_device_train_batch_size=4,
+        save_steps=10_000,
+        save_total_limit=2,
+        evaluation_strategy="epoch" 
+    )
+
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=val_dataset,
+        data_collator=data_collator
+    )
+
+    trainer.train()
+
+    # def generate_text(prompt, model, tokenizer, max_length=50):
+    #     inputs = tokenizer.encode(prompt, return_tensors='pt')
+    #     outputs = model.generate(inputs, max_length=max_length, num_return_sequences=1)
+    #     generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    #     return generated_text[len(prompt):].strip()
+    input_ids = tokenizer.encode(prompt_text, return_tensors='pt')
+    outputs = model.generate(input_ids, max_length=200, num_return_sequences=1)
+    print(f"Model Ouputs: {outputs}")
+
+    if outputs is not None and len(outputs) > 0:
+        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        print(f"Generated Text: {generated_text}")
+        return jsonify({'Generated_text': generated_text})
+    else:
+        return jsonify({'error':'Failed to generate text'}), 500
+    # return generated_text[len(prompt_text):].strip()
+
+# dataset_path = os.path.join(DATASETS_MC_DIR, dataset_name) 
+# generated_text = gpt2_generate_wdataset(dataset_path, prompt_text)
+
+
+    # input_ids = tokenizer.encode(prompt_text, return_tensors=1)
+
+    # output = model.generate(input_ids, max_length=100, num_return_sequences=1, no_repeat_ngram_size=2, early_stopping=True)
+    # generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+
+    # return generated_text
+
+#Code pour bert avec utilisation de dataset (sans que le dataset soit encore à l'intérieur)
+
+#Code pour le choix de modèle et appeler les functions de bert et gpt2 && retourner les réponses.
+
+#
+
