@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from transformers import GPT2LMHeadModel, GPT2Tokenizer, BertModel, BertTokenizer, BertForMaskedLM, pipeline, BertForSequenceClassification, Trainer, TrainingArguments, DataCollatorForLanguageModeling
+from transformers import GPT2LMHeadModel, GPT2Tokenizer, BertModel, BertTokenizer, BertForMaskedLM, pipeline, BertForSequenceClassification, Trainer, TrainingArguments, DataCollatorForLanguageModeling, BertTokenizerFast
 import os
 import json
 import torch
@@ -17,6 +17,8 @@ dataset_text = None
 
 tokenizer = None
 model = None
+modelBert = None
+tokenizerBert = None
 
 gpt2tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 gpt2model = GPT2LMHeadModel.from_pretrained('gpt2')
@@ -180,12 +182,6 @@ def process_selected_dataset():
     else:
         return jsonify({"status": "error", "message": "No dataset selected"}), 400
 
-#DISPLAY VARIABLES FROM THE DATASET
-
-
-
-#COMMENT JE VAIS FAIRE POUR ENREGISTRER LE DATASET ET L'UTILISER AVEC LE MODEL
-
 #Retrieve dataset data
 def get_dataset():
     global dataset_name, dataset_text
@@ -221,8 +217,8 @@ class CustomDataCollator(DataCollatorForLanguageModeling):
         # Add other necessary fields as required by your model
         return batch
 
-#Train dataset
-@magicalCodex_blueprint.route('/dtrain_dataset', methods=['POST']) 
+#Train dataset GPT2
+@magicalCodex_blueprint.route('/dtrain_gpt2', methods=['POST']) 
 def gpt2_train_dataset():
     global tokenizer, model
     data = request.get_json()
@@ -238,13 +234,13 @@ def gpt2_train_dataset():
     try:
         with open(dataset_path, 'r', encoding='utf-8') as file:
             dataset_text = file.read()
-            print(dataset_text[:100])
+            # print(dataset_text[:100])
     except FileNotFoundError:
         return jsonify({'error': f"Dataset {dataset_name} not found"}), 404
 
     cleaned_text = re.sub(r'[^\w\s]', '', dataset_text)
     cleaned_text = cleaned_text.lower()
-    print(cleaned_text)
+    # print(cleaned_text)
     
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     tokenizer.add_special_tokens({'pad_token':'[PAD]'})
@@ -255,7 +251,7 @@ def gpt2_train_dataset():
     block_size = 128
     dataset = TextDataset(cleaned_text, tokenizer, block_size)
 
-    print("dataset = TextDataset(cleaned_text ... )")
+    # print("dataset = TextDataset(cleaned_text ... )")
 
     train_size = int(0.9 * len(dataset))
     val_size = len(dataset) - train_size
@@ -285,23 +281,19 @@ def gpt2_train_dataset():
     )
 
     trainer.train()
-    return jsonify({'message': 'Model trained successfully'})
+    return jsonify({'message': 'Model GPT2 trained successfully'})
     
-#Generate output after training dataset
+#Generate output GPT2 after training dataset
 @magicalCodex_blueprint.route('/dgenerate_text', methods=['POST'])
 def gpt2_generate_text():
     global tokenizer, model
     data = request.get_json()
     prompt_text = data.get('prompt_text')
-
-    # tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-    # tokenizer.add_special_tokens({'pad_token':'[PAD]'})
-
-    # model = GPT2LMHeadModel.from_pretrained('gpt2')
-    # model.resize_token_embeddings(len(tokenizer))
+    print(prompt_text)
 
     input_ids = tokenizer.encode(prompt_text, return_tensors='pt')
-    outputs = model.generate(input_ids, max_length=50, num_return_sequences=1)
+    attention_mask = (input_ids != tokenizer.pad_token_id).long()
+    outputs = model.generate(input_ids,attention_mask=attention_mask, max_length=50, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
     print(f"Model Ouputs: {outputs}")
 
     if outputs is not None and len(outputs) > 0:
@@ -312,9 +304,118 @@ def gpt2_generate_text():
     else:
         return jsonify({'error':'Failed to generate text'}), 500
 
-#Code pour bert avec utilisation de dataset (sans que le dataset soit encore à l'intérieur)
 
-#Code pour le choix de modèle et appeler les functions de bert et gpt2 && retourner les réponses.
+tokenizerBert = BertTokenizerFast.from_pretrained('bert-base-uncased')
+modelBert = BertForMaskedLM.from_pretrained("bert-base-uncased")
 
-#
+class CustomTextDataset(Dataset):
+    def __init__(self, tokenized_text):
+        self.input_ids = tokenized_text['input_ids']
+        self.attention_mask = tokenized_text['attention_mask']
+        if 'token_type_ids' in tokenized_text:
+            self.token_type_ids = tokenized_text['token_type_ids']
+        else:
+            self.token_type_ids = None
 
+    def __len__(self):
+        return len(self.input_ids)
+
+    def __getitem__(self, idx):
+        item = {
+            'input_ids': self.input_ids[idx],
+            'attention_mask': self.attention_mask[idx]
+        }
+        if self.token_type_ids is not None:
+            item['token_type_ids'] = self.token_type_ids[idx]
+        return item
+
+#Train dataset Bert
+@magicalCodex_blueprint.route('/dtrain_bert', methods=['POST'])
+def bert_train_dataset():
+    global tokenizerBert, modelBert
+    data = request.get_json()
+    dataset_name = data.get('dataset_name')
+    model_name = data.get('model_name')
+    epoch = data.get('epoch', 3)
+
+    if not dataset_name or not model_name:
+        return jsonify({'error':'Missing dataset_name or model_name'}), 400
+
+    dataset_path = os.path.join(DATASETS_MC_DIR, dataset_name)
+
+    try:
+        with open(dataset_path, 'r', encoding='utf-8') as file:
+            dataset_text = file.read()
+            # print(dataset_text[:100])
+    except FileNotFoundError:
+        return jsonify({'error': f"Dataset {dataset_name} not found"}), 404
+    
+    cleaned_text = re.sub(r'[^\w\s]', '', dataset_text)
+    cleaned_text = cleaned_text.lower()
+    # print(cleaned_text)
+    lines = cleaned_text.split('\n')
+
+    # block_size= 128
+    # dataset = TextDataset(lines, tokenizerBert, block_size=block_size)
+
+    tokenized_text = tokenizerBert(lines, padding=True, truncation=True, max_length=128, return_tensors='pt')
+
+    train_size = int(0.9 * len(tokenized_text['input_ids']))
+    val_size = len(tokenized_text['input_ids']) - train_size
+
+    # train_dataset = Dataset.from_dict({key: value[:train_size] for key, value in tokenized_text.items()})
+    # val_dataset = Dataset.from_dict({key: value[train_size:] for key, value in tokenized_text.items()})
+
+    train_dataset = CustomTextDataset({key: value[:train_size] for key, value in tokenized_text.items()})
+    val_dataset = CustomTextDataset({key: value[train_size:] for key, value in tokenized_text.items()})
+
+    # train_size = int(0.9 * len(dataset))
+    # val_size = len(dataset) - train_size
+    # train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
+    training_args = TrainingArguments(
+        output_dir='./results',
+        overwrite_output_dir=True,
+        num_train_epochs=epoch,
+        per_device_train_batch_size=4,
+        save_steps=10_000,
+        save_total_limit=2,
+        evaluation_strategy="epoch"
+    )
+
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizerBert, mlm=False)
+
+    trainer = Trainer(
+        model=modelBert,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=val_dataset,
+        data_collator=data_collator
+    )
+
+    try:
+        trainer.train()
+    except Exception as e:
+        return jsonify({'error':f"Training error: {str(e)}"}), 500
+
+    return jsonify({'message': 'Model Bert trained successfully'})
+
+#Predict MASK output Bert after training dataset
+@magicalCodex_blueprint.route('/dpredict_word', methods=['POST'])
+def bert_predict_word():
+    global tokenizerBert, modelBert
+    data = request.get_json()
+    prompt_text = data.get('prompt_text')
+
+    input_ids = tokenizerBert.encode(prompt_text, return_tensors='pt')
+    outputs = modelBert.generate(input_ids, max_length=50, num_return_sequences=1)
+    # print(f"Model Ouputs: {outputs}")
+
+    if outputs is not None and len(outputs) > 0:
+        generated_text = tokenizerBert.decode(outputs[0], skip_special_tokens=True)
+        # print(f"Generated Text: {generated_text}")
+        generated_part = generated_text[len(prompt_text):].strip()
+        return jsonify({'generated_text': generated_part})
+    else:
+        return jsonify({'error':'Failed to generate text'}), 500
+    
