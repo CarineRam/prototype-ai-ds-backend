@@ -15,10 +15,7 @@ DATASETS_MC_DIR = 'datasets_MC'
 selected_dataset_mc = None
 dataset_text = None
 
-tokenizer = None
-model = None
-# modelBert = None
-# tokenizerBert = None
+
 
 gpt2tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 gpt2model = GPT2LMHeadModel.from_pretrained('gpt2')
@@ -122,11 +119,9 @@ def generate_text():
     generated_text = gpt2_generate_response(input_text, max_length)
     return jsonify({'generated_text': generated_text})
 
+
 #prediction of gpt2
 def gpt2_generate_response(input_text, max_length):
-
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-    gpt2model = GPT2LMHeadModel.from_pretrained('gpt2')
 
     input_ids = tokenizer.encode(input_text, return_tensors="pt")
 
@@ -217,14 +212,23 @@ class CustomDataCollator(DataCollatorForLanguageModeling):
         # Add other necessary fields as required by your model
         return batch
 
+#Initialization of the tokenizer and gpt2model
+tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+modelgpt2 = GPT2LMHeadModel.from_pretrained('gpt2')
+
+if tokenizer.pad_token_id is None:
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+
 #Train dataset GPT2
 @magicalCodex_blueprint.route('/dtrain_gpt2', methods=['POST']) 
 def gpt2_train_dataset():
-    global tokenizer, model
+    # global tokenizer, model
     data = request.get_json()
     dataset_name = data.get('dataset_name')
     model_name = data.get('model_name')
-    epoch = data.get('epoch', 3)
+    epoch = data.get('epoch')
+
+    epoch = float(epoch)
 
     if not dataset_name or not model_name:
         return jsonify({'error':'Missing dataset_name or model_name'}), 400
@@ -242,11 +246,11 @@ def gpt2_train_dataset():
     cleaned_text = cleaned_text.lower()
     # print(cleaned_text)
     
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+    # tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     tokenizer.add_special_tokens({'pad_token':'[PAD]'})
 
-    model = GPT2LMHeadModel.from_pretrained('gpt2')
-    model.resize_token_embeddings(len(tokenizer))
+    # model = GPT2LMHeadModel.from_pretrained('gpt2')
+    modelgpt2.resize_token_embeddings(len(tokenizer))
 
     block_size = 128
     dataset = TextDataset(cleaned_text, tokenizer, block_size)
@@ -273,7 +277,7 @@ def gpt2_train_dataset():
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
     trainer = Trainer(
-        model=model,
+        model=modelgpt2,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
@@ -286,14 +290,13 @@ def gpt2_train_dataset():
 #Generate output GPT2 after training dataset
 @magicalCodex_blueprint.route('/dgenerate_text', methods=['POST'])
 def gpt2_generate_text():
-    global tokenizer, model
     data = request.get_json()
     prompt_text = data.get('prompt_text')
     # print(prompt_text)
 
     input_ids = tokenizer.encode(prompt_text, return_tensors='pt')
     attention_mask = (input_ids != tokenizer.pad_token_id).long()
-    outputs = model.generate(input_ids,attention_mask=attention_mask, max_length=50, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
+    outputs = modelgpt2.generate(input_ids,attention_mask=attention_mask, max_length=50, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
     # print(f"Model Ouputs: {outputs}")
 
     if outputs is not None and len(outputs) > 0:
@@ -332,11 +335,14 @@ class CustomTextDataset(Dataset):
 #Train dataset Bert
 @magicalCodex_blueprint.route('/dtrain_bert', methods=['POST'])
 def bert_train_dataset():
-    global tokenizerBert, modelBert
+    # global tokenizerBert, modelBert
     data = request.get_json()
     dataset_name = data.get('dataset_name')
     model_name = data.get('model_name')
-    epoch = data.get('epoch', 3)
+    # epoch = data.get('epoch', 3)
+    epoch = data.get('epoch')
+
+    epoch = float(epoch)
 
     if not dataset_name or not model_name:
         return jsonify({'error':'Missing dataset_name or model_name'}), 400
@@ -414,7 +420,7 @@ def bert_predict(prompt_text, tokenizer, model):
     predicted_token_id = predictions[0, masked_index].argmax(dim=-1).item()
 
     predicted_token = tokenizerBert._convert_id_to_token(predicted_token_id)
-    print(f"Predicted TOken: {predicted_token}")
+    # print(f"Predicted TOken: {predicted_token}")
 
     input_text_list = prompt_text.split()
     input_text_list[input_text_list.index('[MASK]')] = predicted_token
