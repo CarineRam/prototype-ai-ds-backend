@@ -17,8 +17,8 @@ dataset_text = None
 
 tokenizer = None
 model = None
-modelBert = None
-tokenizerBert = None
+# modelBert = None
+# tokenizerBert = None
 
 gpt2tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 gpt2model = GPT2LMHeadModel.from_pretrained('gpt2')
@@ -289,16 +289,16 @@ def gpt2_generate_text():
     global tokenizer, model
     data = request.get_json()
     prompt_text = data.get('prompt_text')
-    print(prompt_text)
+    # print(prompt_text)
 
     input_ids = tokenizer.encode(prompt_text, return_tensors='pt')
     attention_mask = (input_ids != tokenizer.pad_token_id).long()
     outputs = model.generate(input_ids,attention_mask=attention_mask, max_length=50, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
-    print(f"Model Ouputs: {outputs}")
+    # print(f"Model Ouputs: {outputs}")
 
     if outputs is not None and len(outputs) > 0:
         generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        print(f"Generated Text: {generated_text}")
+        # print(f"Generated Text: {generated_text}")
         generated_part = generated_text[len(prompt_text):].strip()
         return jsonify({'generated_text': generated_part})
     else:
@@ -401,21 +401,35 @@ def bert_train_dataset():
     return jsonify({'message': 'Model Bert trained successfully'})
 
 #Predict MASK output Bert after training dataset
+def bert_predict(prompt_text, tokenizer, model):
+    modelBert.eval()
+
+    input_ids = tokenizerBert(prompt_text, return_tensors='pt')
+
+    with torch.no_grad():
+        outputs = model(**input_ids)
+        predictions = outputs.logits
+
+    masked_index = torch.where(input_ids["input_ids"] == tokenizerBert.mask_token_id)[1]
+    predicted_token_id = predictions[0, masked_index].argmax(dim=-1).item()
+
+    predicted_token = tokenizerBert._convert_id_to_token(predicted_token_id)
+    print(f"Predicted TOken: {predicted_token}")
+
+    input_text_list = prompt_text.split()
+    input_text_list[input_text_list.index('[MASK]')] = predicted_token
+    completed_text = ' '.join(input_text_list)
+
+    return completed_text
+
 @magicalCodex_blueprint.route('/dpredict_word', methods=['POST'])
 def bert_predict_word():
-    global tokenizerBert, modelBert
+    # global tokenizerBert, modelBert
     data = request.get_json()
     prompt_text = data.get('prompt_text')
 
-    input_ids = tokenizerBert.encode(prompt_text, return_tensors='pt')
-    outputs = modelBert.generate(input_ids, max_length=50, num_return_sequences=1)
-    # print(f"Model Ouputs: {outputs}")
-
-    if outputs is not None and len(outputs) > 0:
-        generated_text = tokenizerBert.decode(outputs[0], skip_special_tokens=True)
-        # print(f"Generated Text: {generated_text}")
-        generated_part = generated_text[len(prompt_text):].strip()
-        return jsonify({'generated_text': generated_part})
-    else:
-        return jsonify({'error':'Failed to generate text'}), 500
+    if not prompt_text:
+        return jsonify({'error': 'Missing text input'}), 400
     
+    predicted_token = bert_predict(prompt_text, tokenizerBert, modelBert)
+    return jsonify({'predicted_token': predicted_token})
