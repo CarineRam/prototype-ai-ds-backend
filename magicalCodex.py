@@ -172,8 +172,7 @@ def view_parameters():
             'save_date': row[6]
         })
 
-    return jsonify(parameters) #WATCH THE PROBLEM WITH THE VISUALIZATION IN APPVARIANT PAGE
-    # return render_template('view_parameters.html', rows=rows)
+    return jsonify(parameters)
 
 #dataset choice
 @magicalCodex_blueprint.route('/datasets_MC', methods=['GET'])
