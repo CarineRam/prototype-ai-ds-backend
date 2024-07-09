@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, render_template, redirect, url_for
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, BertModel, BertTokenizer, BertForMaskedLM, pipeline, BertForSequenceClassification, Trainer, TrainingArguments, DataCollatorForLanguageModeling, BertTokenizerFast
 import os
 import json
@@ -6,6 +6,7 @@ import torch
 import re
 from torch.utils.data import DataLoader, Dataset, random_split
 from typing import List, Dict
+from parameters import save_parameters, print_all_parameters
 
 magicalCodex_blueprint = Blueprint('magicalCodex', __name__)
 
@@ -101,10 +102,15 @@ def predict_mask():
     data = request.json
     input_text = data.get('input_text')
     max_length = data.get('max_length')
+    temperature = data.get('temperature')
+    stopSequences = data.get('stopSequences')
 
-    print(f"Input Text for Bert : {input_text}")
+    # print(f"Input Text for Bert : {input_text}")
 
     prediction = bert_predict_mask(input_text)
+
+    # save_parameters('Bert', temperature, max_length, stopSequences)
+    # print_all_parameters()
     print("Prediction :", prediction)
     return jsonify({'predicted_text': prediction})
 
@@ -113,9 +119,13 @@ def generate_text():
     data = request.json
     input_text = data.get('input_text')
     max_length = data.get('max_length', 65)
+    temperature = data.get('temperature')
+    stopSequences = data.get('stopSequences')
 
-    print(f"Received input for GPT-2 generation: {input_text}")
+    # print(f"Received input for GPT-2 generation: {input_text}")
 
+    # save_parameters('GPT-2', temperature, max_length, stopSequences) ###TEST SQL
+    # print_all_parameters()
     generated_text = gpt2_generate_response(input_text, max_length)
     return jsonify({'generated_text': generated_text})
 
@@ -131,6 +141,40 @@ def gpt2_generate_response(input_text, max_length):
 
     return generated_text[len(input_text):].strip()
 
+#
+@magicalCodex_blueprint.route('/save_parameters', methods=['POST'])
+def save_parameters_route():
+    data = request.json
+    name = data.get('name')
+    model = data.get('model')
+    max_length = data.get('max_length', 65)
+    temperature = data.get('temperature')
+    stopSequences = data.get('stopSequences')
+
+    save_parameters(name, model, temperature, max_length, stopSequences)
+    print_all_parameters()
+
+    return redirect(url_for('magicalCodex.view_parameters'))
+
+@magicalCodex_blueprint.route('/view_parameters', methods=['GET'])
+def view_parameters():
+    rows = print_all_parameters()
+    parameters = []
+
+    for row in rows:
+        parameters.append({
+            'id': row[0],
+            'name': row[1],
+            'model': row[2],
+            'temperature': row[3],
+            'max_tokens': row[4],
+            'stop_sequences': row[5],
+            'save_date': row[6]
+        })
+
+    return jsonify(parameters) #WATCH THE PROBLEM WITH THE VISUALIZATION IN APPVARIANT PAGE
+    # return render_template('view_parameters.html', rows=rows)
+
 #dataset choice
 @magicalCodex_blueprint.route('/datasets_MC', methods=['GET'])
 def list_datasets_MC():
@@ -138,44 +182,44 @@ def list_datasets_MC():
     print ("datasets_MC", datasets_MC)
     return jsonify(datasetsMC=datasets_MC)
 
-@magicalCodex_blueprint.route('/process_dataset', methods=['POST'])
-def process_dataset():
-    dataset_name = request.json.get('dataset_name')
-    model_type = request.json.get('model_type')
-    dataset_path = os.path.join(DATASETS_MC_DIR, dataset_name)
+# @magicalCodex_blueprint.route('/process_dataset', methods=['POST'])
+# def process_dataset():
+#     dataset_name = request.json.get('dataset_name')
+#     model_type = request.json.get('model_type')
+#     dataset_path = os.path.join(DATASETS_MC_DIR, dataset_name)
 
-    if not os.path.exists(dataset_path):
-        return jsonify(error="Dataset not found"), 404
+#     if not os.path.exists(dataset_path):
+#         return jsonify(error="Dataset not found"), 404
     
-    with open(dataset_path, 'r') as file:
-        dataset_content = file.read()
+#     with open(dataset_path, 'r') as file:
+#         dataset_content = file.read()
 
-        selected_model = load_selected_model_MC()
+#         selected_model = load_selected_model_MC()
 
-        if not selected_model or selected_model not in models_MC:
-            return jsonify(error="Model not selected or invalid"), 400
+#         if not selected_model or selected_model not in models_MC:
+#             return jsonify(error="Model not selected or invalid"), 400
         
-        if selected_model == 'berttokenizer':
-            bert_predict_mask(input_text=any)
+#         if selected_model == 'berttokenizer':
+#             bert_predict_mask(input_text=any)
 
-        elif selected_model == 'gpt2tokenizer':
-            gpt2_generate_response(input_text=any)
+#         elif selected_model == 'gpt2tokenizer':
+#             gpt2_generate_response(input_text=any)
 
-        return jsonify(input=dataset_content)
+#         return jsonify(input=dataset_content)
     
-@magicalCodex_blueprint.route('/magicalCodex/process_selected_dataset', methods=['GET'])
-def process_selected_dataset():
-    global selected_dataset_mc
-    if selected_dataset_mc:
-        dataset_path = os.path.join(DATASETS_MC_DIR, selected_dataset_mc)
-        with open(dataset_path, 'r') as file:
-            data = file.readlines()
+# @magicalCodex_blueprint.route('/magicalCodex/process_selected_dataset', methods=['GET'])
+# def process_selected_dataset():
+#     global selected_dataset_mc
+#     if selected_dataset_mc:
+#         dataset_path = os.path.join(DATASETS_MC_DIR, selected_dataset_mc)
+#         with open(dataset_path, 'r') as file:
+#             data = file.readlines()
 
-        responses = [gpt2_generate_response(line.strip()) for line in data]
+#         responses = [gpt2_generate_response(line.strip()) for line in data]
 
-        return jsonify({"status": "success", "message": f"Dataset {selected_dataset_mc} processed with GPT-2", "responses": responses})
-    else:
-        return jsonify({"status": "error", "message": "No dataset selected"}), 400
+#         return jsonify({"status": "success", "message": f"Dataset {selected_dataset_mc} processed with GPT-2", "responses": responses})
+#     else:
+#         return jsonify({"status": "error", "message": "No dataset selected"}), 400
 
 #Retrieve dataset data
 def get_dataset():
@@ -439,3 +483,5 @@ def bert_predict_word():
     
     predicted_token = bert_predict(prompt_text, tokenizerBert, modelBert)
     return jsonify({'predicted_token': predicted_token})
+
+#Save the parameters in the 
