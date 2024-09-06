@@ -9,13 +9,13 @@ This repository contains backend API's for a data science prototype project. The
 1. Clone the repository:
 
     ```
-    git clone https://github.com/Refonte-Infini/Backend-Data-Science-Prototype
+    git clone https://github.com/CarineRam/prototype-ai-ds-backend
     ```
 
 2. Navigate to the project directory:
 
     ```
-    cd data_science_prototype
+    cd prototype-ai-ds-backend
     ```
 
 3. Create and activate venv and install dependencies  pip:
